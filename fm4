@@ -1,0 +1,75 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use v5;
+
+use feature qw{signatures};
+no warnings qw{experimental::signatures};
+
+use open qw{:std :utf8};
+
+use Data::Dumper;
+
+use LWP::UserAgent qw{};
+use JSON qw{decode_json};
+
+use constant
+  POLL_URL => 'https://audioapi.orf.at/fm4/json/current/broadcast/onair';
+
+sub error ($message) {
+  print STDOUT "ERROR\n";
+  print STDOUT "$message\n";
+  exit -1;
+}
+
+sub skip ($message) {
+  print STDOUT "SKIP\n";
+  print STDOUT "$message\n";
+  exit 0;
+}
+
+sub ok ($artist, $title) {
+  print STDOUT "OK\n";
+  print STDOUT "$artist\n";
+  print STDOUT "$title\n";
+  exit 0;
+}
+
+sub extract_and_print_track ($json) {
+  my $struct = decode_json($json);
+  my $item = $struct->{item};
+
+  # TODO: observe `type` regarding currently playing media
+  # Current observations:
+  #  M - Music?
+  #  J - News / Talk
+  #  N - News
+  print STDERR "Type: $item->{type}\n";
+
+  my $title  = $item->{title};
+  my $artist = $item->{interpreter};
+
+  # It's probably not a track if there is no artist
+  if (!(defined($title) and defined($artist))) {
+    skip(Dumper($item));
+  }
+
+  ok($artist, $title);
+}
+
+sub main {
+  my $ua = LWP::UserAgent->new(
+    agent   => 'nanont-lastfm FM4 scrobbler/0.1',
+    timeout => 10
+  );
+
+  my $res = $ua->get(POLL_URL);
+  if (! $res->is_success) {
+    error($res->status_line);
+  } else {
+    extract_and_print_track($res->decoded_content);
+  }
+}
+
+main;
